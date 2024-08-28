@@ -80,6 +80,8 @@ Explore::Explore()
   this->get_parameter("return_to_init", return_to_init_);
   this->get_parameter("robot_base_frame", robot_base_frame_);
 
+  currentState = IDLE;
+
   progress_timeout_ = timeout;
   move_base_client_ =
       rclcpp_action::create_client<nav2_msgs::action::NavigateToPose>(
@@ -101,6 +103,13 @@ Explore::Explore()
   resume_subscription_ = this->create_subscription<std_msgs::msg::Bool>(
       "explore/resume", 10,
       std::bind(&Explore::resumeCallback, this, std::placeholders::_1));
+      
+  image_detection_subscription_ = this->create_subscription<vision_msgs::msg::Detection2DArray>(
+      "detected_objects", 10,
+      std::bind(&Explore::detectedObjectCallback, this, std::placeholders::_1));
+      
+  joy_publisher_ =
+        this->create_publisher<sensor_msgs::msg::Joy>("joy", 10);
 
   RCLCPP_INFO(logger_, "Waiting to connect to move_base nav2 server");
   move_base_client_->wait_for_action_server();
@@ -141,6 +150,73 @@ void Explore::resumeCallback(const std_msgs::msg::Bool::SharedPtr msg)
     resume();
   } else {
     stop();
+  }
+}
+
+void Explore::approachObjectCallback(nav2_msgs::action::NavigateToPose::Impl::CancelGoalService::Response::SharedPtr){
+
+    auto goal = nav2_msgs::action::NavigateToPose::Goal();
+    goal.pose.pose.position = chosen_box_;
+    goal.pose.header.frame_id = costmap_client_.getGlobalFrameID();
+    goal.pose.header.stamp = this->now();
+
+    auto send_goal_options =
+      rclcpp_action::Client<nav2_msgs::action::NavigateToPose>::SendGoalOptions();
+      
+    send_goal_options.feedback_callback =
+     std::bind(&Explore::feedback_callback, this, _1, _2);
+    send_goal_options.result_callback =
+      [this](const NavigationGoalHandle::WrappedResult& result) {
+        reachedGoal(result, chosen_box_);
+      };
+      
+    move_base_client_->async_send_goal(goal, send_goal_options);
+    
+    auto robot_pose = costmap_client_.getRobotPose();
+    
+    RCLCPP_INFO(logger_, "Sensing object at %.2f,%.2f. I'm in %.2f,%.2f.", chosen_box_.x, chosen_box_.y, robot_pose.position.x, robot_pose.position.y);
+    
+    currentState = APPROACHING_OBJECT;
+}
+
+void Explore::detectedObjectCallback(const vision_msgs::msg::Detection2DArray::SharedPtr msg)
+{
+  for (const auto& det : msg->detections){
+    
+    if(det.results[0].hypothesis.class_id == "box"){
+        auto robot_pose = costmap_client_.getRobotPose();
+        
+        double distance = sqrt(pow((double(det.results[0].pose.pose.position.x) - double(robot_pose.position.x)), 2.0) +
+                               pow((double(det.results[0].pose.pose.position.y) - double(robot_pose.position.y)), 2.0));
+                               
+        if(distance <= 2){
+        
+            for (const auto& det_vec : {std::cref(box_detected_), std::cref(box_sensed_)}) {
+                for (auto det_point : det_vec.get()) {
+        
+                    double object_distance = sqrt(pow((double(det.results[0].pose.pose.position.x) - double(det_point.x)), 2.0) +
+                                   pow((double(det.results[0].pose.pose.position.y) - double(det_point.y)), 2.0));
+                                   
+                    if (object_distance <= 1 and currentState == IDLE){
+                        if(det_vec.get() == box_detected_){
+                            RCLCPP_INFO(logger_, "Canceling goal.");
+                            
+                            exploring_timer_->cancel();
+                            chosen_box_ = det.results[0].pose.pose.position;
+                            move_base_client_->async_cancel_all_goals(std::bind(&Explore::approachObjectCallback, this, std::placeholders::_1));
+                            
+                            currentState = CANCELING;
+                            
+                            
+                        }
+                        return;
+                    }
+                }
+            }
+            box_detected_.push_back(det.results[0].pose.pose.position);
+        }
+        
+    }
   }
 }
 
@@ -299,7 +375,7 @@ void Explore::makePlan()
     return;
   }
 
-  RCLCPP_DEBUG(logger_, "Sending goal to move base nav2");
+  RCLCPP_INFO(logger_, "Sending goal to move base nav2");
 
   // send goal to move_base if we have something new to pursue
   auto goal = nav2_msgs::action::NavigateToPose::Goal();
@@ -312,7 +388,7 @@ void Explore::makePlan()
       rclcpp_action::Client<nav2_msgs::action::NavigateToPose>::SendGoalOptions();
   // send_goal_options.goal_response_callback =
   // std::bind(&Explore::goal_response_callback, this, _1);
-  // send_goal_options.feedback_callback =
+  //send_goal_options.feedback_callback =
   //   std::bind(&Explore::feedback_callback, this, _1, _2);
   send_goal_options.result_callback =
       [this,
@@ -353,26 +429,71 @@ bool Explore::goalOnBlacklist(const geometry_msgs::msg::Point& goal)
   return false;
 }
 
+void Explore::feedback_callback(rclcpp_action::ClientGoalHandle<nav2_msgs::action::NavigateToPose>::SharedPtr, const std::shared_ptr<const nav2_msgs::action::NavigateToPose::Feedback> feedback){
+
+    
+
+    if(currentState == APPROACHING_OBJECT){
+        RCLCPP_INFO(logger_, "Feedback %.2f.", feedback->distance_remaining);
+        if (feedback->distance_remaining < 0.5 and feedback->distance_remaining > 0){
+            RCLCPP_INFO(logger_, "Should finish here.");
+            move_base_client_->async_cancel_all_goals();
+            sensor_msgs::msg::Joy joy_msg;
+            joy_msg.buttons.push_back(0);
+            joy_msg.buttons.push_back(1);
+            joy_publisher_->publish(joy_msg);
+            rclcpp::sleep_for(std::chrono::milliseconds(3000));
+            joy_msg.buttons[0] = 0;
+            joy_msg.buttons[1] = 0;
+            joy_publisher_->publish(joy_msg);
+            RCLCPP_INFO(logger_, "Now going to sense.");
+            joy_msg.buttons[0] = 1;
+            joy_msg.buttons[1] = 0;
+            joy_publisher_->publish(joy_msg);
+            rclcpp::sleep_for(std::chrono::milliseconds(3000));
+            joy_msg.buttons[0] = 0;
+            joy_msg.buttons[1] = 0;
+            joy_publisher_->publish(joy_msg);
+            RCLCPP_INFO(logger_, "Now going to resume.");
+            prev_goal_ = geometry_msgs::msg::Point();
+            resume();
+        }
+    }
+
+    return;
+}
+
 void Explore::reachedGoal(const NavigationGoalHandle::WrappedResult& result,
                           const geometry_msgs::msg::Point& frontier_goal)
 {
   switch (result.code) {
     case rclcpp_action::ResultCode::SUCCEEDED:
-      RCLCPP_DEBUG(logger_, "Goal was successful");
+      RCLCPP_INFO(logger_, "Goal was successful");
+      
+      if (currentState == APPROACHING_OBJECT){
+        sensor_msgs::msg::Joy joy_msg;
+        joy_msg.buttons.push_back(0);
+        joy_msg.buttons.push_back(1);
+        joy_publisher_->publish(joy_msg);
+        joy_msg.buttons[0] = 0;
+        joy_msg.buttons[1] = 0;
+        joy_publisher_->publish(joy_msg);
+        //HERE SENSE
+      }
       break;
     case rclcpp_action::ResultCode::ABORTED:
-      RCLCPP_DEBUG(logger_, "Goal was aborted");
+      RCLCPP_INFO(logger_, "Goal was aborted");
       frontier_blacklist_.push_back(frontier_goal);
       RCLCPP_DEBUG(logger_, "Adding current goal to black list");
       // If it was aborted probably because we've found another frontier goal,
       // so just return and don't make plan again
       return;
     case rclcpp_action::ResultCode::CANCELED:
-      RCLCPP_DEBUG(logger_, "Goal was canceled");
+      RCLCPP_INFO(logger_, "Goal was canceled");
       // If goal canceled might be because exploration stopped from topic. Don't make new plan.
       return;
     default:
-      RCLCPP_WARN(logger_, "Unknown result code from move base nav2");
+      RCLCPP_INFO(logger_, "Unknown result code from move base nav2");
       break;
   }
   // find new goal immediately regardless of planning frequency.
@@ -385,6 +506,9 @@ void Explore::reachedGoal(const NavigationGoalHandle::WrappedResult& result,
 
   // Because of the 1-thread-executor nature of ros2 I think timer is not
   // needed.
+  
+  currentState = IDLE;
+  
   makePlan();
 }
 

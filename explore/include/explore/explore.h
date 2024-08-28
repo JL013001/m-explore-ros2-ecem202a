@@ -54,6 +54,8 @@
 #include <string>
 #include <vector>
 #include <visualization_msgs/msg/marker_array.hpp>
+#include <vision_msgs/msg/detection2_d_array.hpp>
+#include <sensor_msgs/msg/joy.hpp>
 
 #include "nav2_msgs/action/navigate_to_pose.hpp"
 #include "rclcpp_action/rclcpp_action.hpp"
@@ -122,6 +124,15 @@ private:
 
   rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr resume_subscription_;
   void resumeCallback(const std_msgs::msg::Bool::SharedPtr msg);
+  
+  rclcpp::Subscription<vision_msgs::msg::Detection2DArray>::SharedPtr image_detection_subscription_;
+  void detectedObjectCallback(const vision_msgs::msg::Detection2DArray::SharedPtr msg);
+  
+  void approachObjectCallback(nav2_msgs::action::NavigateToPose::Impl::CancelGoalService::Response::SharedPtr);
+  
+  void feedback_callback(rclcpp_action::ClientGoalHandle<nav2_msgs::action::NavigateToPose>::SharedPtr, const std::shared_ptr<const nav2_msgs::action::NavigateToPose::Feedback> feedback);
+
+  rclcpp::Publisher<sensor_msgs::msg::Joy>::SharedPtr joy_publisher_;
 
   std::vector<geometry_msgs::msg::Point> frontier_blacklist_;
   geometry_msgs::msg::Point prev_goal_;
@@ -140,6 +151,20 @@ private:
   bool return_to_init_;
   std::string robot_base_frame_;
   bool resuming_ = false;
+  
+  
+  std::vector<geometry_msgs::msg::Point> box_detected_;
+  std::vector<geometry_msgs::msg::Point> box_sensed_;
+  geometry_msgs::msg::Point chosen_box_;
+  
+  enum State {
+  IDLE,
+  CANCELING,
+  APPROACHING_OBJECT
+  }; 
+  
+  enum State currentState; 
+  
 };
 }  // namespace explore
 
