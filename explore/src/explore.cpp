@@ -99,6 +99,8 @@ Explore::Explore()
                                                                      10);
   }
 
+  confirmed_object_ = "None";
+
   // Subscription to resume or stop exploration
   resume_subscription_ = this->create_subscription<std_msgs::msg::Bool>(
       "explore/resume", 10,
@@ -107,6 +109,10 @@ Explore::Explore()
   image_detection_subscription_ = this->create_subscription<vision_msgs::msg::Detection2DArray>(
       "detected_objects", 10,
       std::bind(&Explore::detectedObjectCallback, this, std::placeholders::_1));
+
+  confirmed_object_subscription_ = this->create_subscription<std_msgs::msg::String>(
+      "confirmed_object_to_detect", 10,
+      std::bind(&Explore::confirmedObjectCallback, this, std::placeholders::_1));
       
   joy_publisher_ =
         this->create_publisher<sensor_msgs::msg::Joy>("joy", 10);
@@ -132,11 +138,15 @@ Explore::Explore()
     }
   }
 
-  exploring_timer_ = this->create_wall_timer(
+  
+  // Start exploration right away
+  // makePlan();
+}
+
+void Explore::startExplorationTimer() {
+    exploring_timer_ = this->create_wall_timer(
       std::chrono::milliseconds((uint16_t)(1000.0 / planner_frequency_)),
       [this]() { makePlan(); });
-  // Start exploration right away
-  makePlan();
 }
 
 Explore::~Explore()
@@ -151,6 +161,16 @@ void Explore::resumeCallback(const std_msgs::msg::Bool::SharedPtr msg)
   } else {
     stop();
   }
+}
+
+void Explore::confirmedObjectCallback(const std_msgs::msg::String::SharedPtr msg)
+{
+  // print for debugging
+  RCLCPP_INFO(this->get_logger(), "Received message: %s", msg->data.c_str());
+  RCLCPP_INFO(logger_, "Object detection confirmed. Starting exploration.");
+  confirmed_object_ = msg->data.c_str();
+  startExplorationTimer();
+  makePlan();
 }
 
 void Explore::approachObjectCallback(nav2_msgs::action::NavigateToPose::Impl::CancelGoalService::Response::SharedPtr){
@@ -183,7 +203,7 @@ void Explore::detectedObjectCallback(const vision_msgs::msg::Detection2DArray::S
 {
   for (const auto& det : msg->detections){
     
-    if(det.results[0].hypothesis.class_id == "box"){
+    if(det.results[0].hypothesis.class_id == confirmed_object_){
         auto robot_pose = costmap_client_.getRobotPose();
         
         double distance = sqrt(pow((double(det.results[0].pose.pose.position.x) - double(robot_pose.position.x)), 2.0) +
