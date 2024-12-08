@@ -138,8 +138,8 @@ Explore::Explore()
     }
   }
   // exploring_timer_ = this->create_wall_timer(
-      std::chrono::milliseconds((uint16_t)(1000.0 / planner_frequency_)),
-      [this]() { makePlan(); });
+      // std::chrono::milliseconds((uint16_t)(1000.0 / planner_frequency_)),
+      // [this]() { makePlan(); });
   
   // Start exploration right away
   // makePlan();
@@ -204,7 +204,7 @@ void Explore::approachObjectCallback(nav2_msgs::action::NavigateToPose::Impl::Ca
 void Explore::detectedObjectCallback(const vision_msgs::msg::Detection2DArray::SharedPtr msg)
 {
   for (const auto& det : msg->detections){
-    RCLCPP_INFO(logger_, "Detected object: %s", det.results[0].hypothesis.class_id);
+    RCLCPP_INFO(logger_, "Detected object: %s", det.results[0].hypothesis.class_id.c_str());
     RCLCPP_INFO(logger_, "Searching object: %s", confirmed_object_.c_str());
     if(det.results[0].hypothesis.class_id == confirmed_object_){
         RCLCPP_INFO(logger_, "hi");
