@@ -166,7 +166,7 @@ void Explore::resumeCallback(const std_msgs::msg::Bool::SharedPtr msg)
 void Explore::confirmedObjectCallback(const std_msgs::msg::String::SharedPtr msg)
 {
   // print for debugging
-  RCLCPP_INFO(this->get_logger(), "Received message: %s", msg->data.c_str());
+  RCLCPP_INFO(logger_, "Received message: %s", msg->data.c_str());
   RCLCPP_INFO(logger_, "Object detection confirmed. Starting exploration.");
   confirmed_object_ = msg->data.c_str();
   startExplorationTimer();
@@ -202,7 +202,8 @@ void Explore::approachObjectCallback(nav2_msgs::action::NavigateToPose::Impl::Ca
 void Explore::detectedObjectCallback(const vision_msgs::msg::Detection2DArray::SharedPtr msg)
 {
   for (const auto& det : msg->detections){
-    
+    RCLCPP_INFO(logger_, "Detected object: %s", det.results[0].hypothesis.class_id);
+    RCLCPP_INFO(logger_, "Searching object: %s", confirmed_object_);
     if(det.results[0].hypothesis.class_id == confirmed_object_){
         auto robot_pose = costmap_client_.getRobotPose();
         
