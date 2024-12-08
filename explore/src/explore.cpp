@@ -137,10 +137,12 @@ Explore::Explore()
       return_to_init_ = false;
     }
   }
-
+  exploring_timer_ = this->create_wall_timer(
+      std::chrono::milliseconds((uint16_t)(1000.0 / planner_frequency_)),
+      [this]() { makePlan(); });
   
   // Start exploration right away
-  // makePlan();
+  makePlan();
 }
 
 void Explore::startExplorationTimer() {
@@ -169,8 +171,8 @@ void Explore::confirmedObjectCallback(const std_msgs::msg::String::SharedPtr msg
   RCLCPP_INFO(logger_, "Received message: %s", msg->data.c_str());
   RCLCPP_INFO(logger_, "Object detection confirmed. Starting exploration.");
   confirmed_object_ = msg->data.c_str();
-  startExplorationTimer();
-  makePlan();
+  // startExplorationTimer();
+  // makePlan();
 }
 
 void Explore::approachObjectCallback(nav2_msgs::action::NavigateToPose::Impl::CancelGoalService::Response::SharedPtr){
