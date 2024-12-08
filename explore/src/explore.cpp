@@ -137,12 +137,12 @@ Explore::Explore()
       return_to_init_ = false;
     }
   }
-  exploring_timer_ = this->create_wall_timer(
+  // exploring_timer_ = this->create_wall_timer(
       std::chrono::milliseconds((uint16_t)(1000.0 / planner_frequency_)),
       [this]() { makePlan(); });
   
   // Start exploration right away
-  makePlan();
+  // makePlan();
 }
 
 void Explore::startExplorationTimer() {
@@ -170,9 +170,9 @@ void Explore::confirmedObjectCallback(const std_msgs::msg::String::SharedPtr msg
   // print for debugging
   RCLCPP_INFO(logger_, "Received message: %s", msg->data.c_str());
   RCLCPP_INFO(logger_, "Object detection confirmed. Starting exploration.");
-  confirmed_object_ = msg->data.c_str();
-  // startExplorationTimer();
-  // makePlan();
+  confirmed_object_ = msg->data;
+  startExplorationTimer();
+  makePlan();
 }
 
 void Explore::approachObjectCallback(nav2_msgs::action::NavigateToPose::Impl::CancelGoalService::Response::SharedPtr){
@@ -205,8 +205,9 @@ void Explore::detectedObjectCallback(const vision_msgs::msg::Detection2DArray::S
 {
   for (const auto& det : msg->detections){
     RCLCPP_INFO(logger_, "Detected object: %s", det.results[0].hypothesis.class_id);
-    RCLCPP_INFO(logger_, "Searching object: %s", confirmed_object_);
+    RCLCPP_INFO(logger_, "Searching object: %s", confirmed_object_.c_str());
     if(det.results[0].hypothesis.class_id == confirmed_object_){
+        RCLCPP_INFO(logger_, "hi");
         auto robot_pose = costmap_client_.getRobotPose();
         
         double distance = sqrt(pow((double(det.results[0].pose.pose.position.x) - double(robot_pose.position.x)), 2.0) +
