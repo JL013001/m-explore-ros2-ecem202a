@@ -428,7 +428,7 @@ void Explore::makePlan()
         reachedGoal(result, target_position);
       };
   move_base_client_->async_send_goal(goal, send_goal_options);
-  rclcpp::sleep_for(std::chrono::seconds(0.5)); // introduce a little delay
+  rclcpp::sleep_for(std::chrono::milliseconds(500)); // introduce a little delay
 }
 
 void Explore::returnToInitialPose()
