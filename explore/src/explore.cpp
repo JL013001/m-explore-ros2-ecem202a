@@ -207,37 +207,45 @@ void Explore::detectedObjectCallback(const vision_msgs::msg::Detection2DArray::S
     RCLCPP_INFO(logger_, "Detected object: %s", det.results[0].hypothesis.class_id.c_str());
     RCLCPP_INFO(logger_, "Searching object: %s", confirmed_object_.c_str());
     if(det.results[0].hypothesis.class_id == confirmed_object_){
-        RCLCPP_INFO(logger_, "hi");
-        auto robot_pose = costmap_client_.getRobotPose();
+        RCLCPP_INFO(logger_, "Target object found. Stopping action.");
+
+      // Cancel exploration and handle found object
+        exploring_timer_->cancel();
+        chosen_box_ = det.results[0].pose.pose.position;
+        move_base_client_->async_cancel_all_goals(std::bind(&Explore::approachObjectCallback, this, std::placeholders::_1));
+            
+        currentState = CANCELING;
+        return;  // Stop further processing
+        // auto robot_pose = costmap_client_.getRobotPose();
         
-        double distance = sqrt(pow((double(det.results[0].pose.pose.position.x) - double(robot_pose.position.x)), 2.0) +
-                               pow((double(det.results[0].pose.pose.position.y) - double(robot_pose.position.y)), 2.0));
+        // double distance = sqrt(pow((double(det.results[0].pose.pose.position.x) - double(robot_pose.position.x)), 2.0) +
+        //                        pow((double(det.results[0].pose.pose.position.y) - double(robot_pose.position.y)), 2.0));
                                
-        if(distance <= 2){
+        // if(distance <= 2){
         
-            for (const auto& det_vec : {std::cref(box_detected_), std::cref(box_sensed_)}) {
-                for (auto det_point : det_vec.get()) {
+        //     for (const auto& det_vec : {std::cref(box_detected_), std::cref(box_sensed_)}) {
+        //         for (auto det_point : det_vec.get()) {
         
-                    double object_distance = sqrt(pow((double(det.results[0].pose.pose.position.x) - double(det_point.x)), 2.0) +
-                                   pow((double(det.results[0].pose.pose.position.y) - double(det_point.y)), 2.0));
+        //             double object_distance = sqrt(pow((double(det.results[0].pose.pose.position.x) - double(det_point.x)), 2.0) +
+        //                            pow((double(det.results[0].pose.pose.position.y) - double(det_point.y)), 2.0));
                                    
-                    if (object_distance <= 1 and currentState == IDLE){
-                        if(det_vec.get() == box_detected_){
-                            RCLCPP_INFO(logger_, "Canceling goal.");
+        //             if (object_distance <= 1 and currentState == IDLE){
+        //                 if(det_vec.get() == box_detected_){
+        //                     RCLCPP_INFO(logger_, "Canceling goal.");
                             
-                            exploring_timer_->cancel();
-                            chosen_box_ = det.results[0].pose.pose.position;
-                            move_base_client_->async_cancel_all_goals(std::bind(&Explore::approachObjectCallback, this, std::placeholders::_1));
+        //                     exploring_timer_->cancel();
+        //                     chosen_box_ = det.results[0].pose.pose.position;
+        //                     move_base_client_->async_cancel_all_goals(std::bind(&Explore::approachObjectCallback, this, std::placeholders::_1));
                             
-                            currentState = CANCELING;
+        //                     currentState = CANCELING;
                             
                             
-                        }
-                        return;
-                    }
-                }
-            }
-            box_detected_.push_back(det.results[0].pose.pose.position);
+        //                 }
+        //                 return;
+        //             }
+        //         }
+        //     }
+        //     box_detected_.push_back(det.results[0].pose.pose.position);
         }
         
     }
