@@ -246,7 +246,7 @@ void Explore::detectedObjectCallback(const vision_msgs::msg::Detection2DArray::S
         //         }
         //     }
         //     box_detected_.push_back(det.results[0].pose.pose.position);
-        }
+        // }
         
     }
   }
