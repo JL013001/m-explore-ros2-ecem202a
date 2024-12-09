@@ -61,7 +61,7 @@ Explore::Explore()
 {
   double timeout;
   double min_frontier_size;
-  this->declare_parameter<float>("planner_frequency", 1.0);
+  this->declare_parameter<float>("planner_frequency", 0.5);
   this->declare_parameter<float>("progress_timeout", 30.0);
   this->declare_parameter<bool>("visualize", false);
   this->declare_parameter<float>("potential_scale", 1e-3);
@@ -428,6 +428,7 @@ void Explore::makePlan()
         reachedGoal(result, target_position);
       };
   move_base_client_->async_send_goal(goal, send_goal_options);
+  rclcpp::sleep_for(std::chrono::seconds(0.5)); // introduce a little delay
 }
 
 void Explore::returnToInitialPose()
